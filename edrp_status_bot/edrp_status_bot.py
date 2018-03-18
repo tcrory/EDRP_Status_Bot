@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#! /usr/bin/python3.5
 """ Discord bot to display status information for the number of players logged in
     to the ED RP private group on Elite.
 """

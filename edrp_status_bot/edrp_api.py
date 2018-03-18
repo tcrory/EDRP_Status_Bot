@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#! /usr/bin/python3.5
 """ Methods for generating async HTTP requests for the EDRP API."""
 
 import aiohttp
