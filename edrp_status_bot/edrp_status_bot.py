@@ -28,6 +28,10 @@ logger.addHandler(handler)
 loop = asyncio.get_event_loop()
 bot = Bot(command_prefix=config.COMMAND_PREFIX, loop=loop)
 
+# Disable all commands.
+bot.remove_command('help')
+bot.recursively_remove_all_commands()
+
 
 async def maintain_accurate_bot_presence():
     """ Update the bot presence with values returned from the EDRP API."""
