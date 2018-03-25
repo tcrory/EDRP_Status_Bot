@@ -37,6 +37,7 @@ async def maintain_accurate_bot_presence(bot):
                     logger.warning('BOT|Bot is not currently logged in.')
                 await asyncio.sleep(60)
         except asyncio.CancelledError:
+            await session.close()
             return
 
 
@@ -72,6 +73,8 @@ async def windows_signal_handler():
 def main():
     """ Start the bot and any additional tasks."""
     # Remake the event loop and the bot.
+    logger.info('BOT|Creating a new event loop.')
+    asyncio.set_event_loop(asyncio.new_event_loop())
     loop = asyncio.get_event_loop()
     bot = Bot(command_prefix=config.COMMAND_PREFIX, loop=loop)
 
@@ -85,32 +88,65 @@ def main():
         """ When bot is ready, update the bot presence."""
         logger.info('BOT|Bot is now ready.')
         async with aiohttp.ClientSession() as session:
-            await update_bot_presence(session, bot)
+            try:
+                await update_bot_presence(session, bot)
+            except asyncio.CancelledError:
+                await session.close()
+                return
 
     # Start the task and bot.
     logger.info('BOT|Starting custom tasks.')
     loop.create_task(windows_signal_handler())
     loop.create_task(maintain_accurate_bot_presence(bot))
     logger.info('BOT|Starting Discord bot.')
-    bot.run(config.TOKEN)
+    try:
+        bot.run(config.TOKEN)
+    except aiohttp.ClientError:
+        # In the event of an aiohttp disconnect, close the loop and pass the exception.
+        # This code gathered from the discord.py run() function.
+        logger.error('BOT|Caught an aiohttp.ClientError exception.')
+        if not loop.is_closed():
+            logger.warning('BOT|Closing the bot.')
+            loop.run_until_complete(bot.logout())
+            pending = asyncio.Task.all_tasks(loop=loop)
+            gathered = asyncio.gather(*pending, loop=loop)
+            try:
+                gathered.cancel()
+                loop.run_until_complete(gathered)
+                # we want to retrieve any exceptions to make sure that
+                # they don't nag us about it being un-retrieved.
+                gathered.exception()
+            except:
+                pass
+        logger.warning('BOT|Re-raising the aiohttp.ClientError exception so that the bot may be restarted.')
+        raise aiohttp.ClientError
+    finally:
+        # Close the event loop if it is still open.
+        if not loop.is_closed():
+            loop.close()
 
 
 while True:
     try:
         # Start the task and bot.
         main()
-    except discord.DiscordException as e:
+    except discord.DiscordException as err:
         # Log stack trace.
         logger.error('BOT|Caught unhandled Discord exception:', exc_info=True)
-        restart_delay = 10
+        restart_delay = 60
         logger.info('BOT|Waiting for {} seconds.'.format(restart_delay))
         time.sleep(restart_delay)
         logger.info('BOT|Attempting to restart bot.')
         continue
-    except KeyboardInterrupt:
-        logger.info('BOT|Keyboard Interrupt: Closing the Discord bot.')
-        break
+    except aiohttp.ClientError as err:
+        logger.warning('BOT|Caught the re-raised aiohttp.ClientError exception.')
+        restart_delay = 600
+        logger.info('BOT|Waiting for {} seconds.'.format(restart_delay))
+        time.sleep(restart_delay)
+        logger.info('BOT|Attempting to restart bot.')
+        continue
     else:
         logger.critical('BOT|Caught unhandled exception:', exc_info=True)
         break
+
 logger.info('BOT|Discord bot closed.')
