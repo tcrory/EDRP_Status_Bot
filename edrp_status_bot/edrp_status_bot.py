@@ -7,6 +7,7 @@ import aiohttp
 import asyncio
 import discord
 import logging
+import time
 import bot_config as config
 import edrp_api as edrp
 from discord.ext import commands
@@ -24,22 +25,14 @@ handler.setFormatter(
 )
 logger.addHandler(handler)
 
-# Set up the initial coroutine for updating the bot presence.
-loop = asyncio.get_event_loop()
-bot = Bot(command_prefix=config.COMMAND_PREFIX, loop=loop)
 
-# Disable all commands.
-bot.remove_command('help')
-bot.recursively_remove_all_commands()
-
-
-async def maintain_accurate_bot_presence():
+async def maintain_accurate_bot_presence(bot):
     """ Update the bot presence with values returned from the EDRP API."""
     async with aiohttp.ClientSession() as session:
         try:
             while True:
                 if bot.is_logged_in:
-                    await update_bot_presence(session)
+                    await update_bot_presence(session, bot)
                 else:
                     logger.warning('BOT|Bot is not currently logged in.')
                 await asyncio.sleep(60)
@@ -47,7 +40,7 @@ async def maintain_accurate_bot_presence():
             return
 
 
-async def update_bot_presence(session):
+async def update_bot_presence(session, bot):
     """ Update the bot presence with values returned from the EDRP API.
 
         :return: Success of API call.
@@ -63,15 +56,6 @@ async def update_bot_presence(session):
     return True
 
 
-# Setup the discord bot event handlers.
-@bot.event
-async def on_ready():
-    """ When bot is ready, update the bot presence."""
-    logger.info('BOT|Bot is now ready.')
-    async with aiohttp.ClientSession() as session:
-        await update_bot_presence(session)
-
-
 async def windows_signal_handler():
     """ The signal handler will not work on Windows when using
         asyncio.get_event_loop().run_forever()
@@ -85,10 +69,48 @@ async def windows_signal_handler():
         return
 
 
-# Start the task and bot.
-logger.info('BOT|Starting custom tasks.')
-loop.create_task(windows_signal_handler())
-loop.create_task(maintain_accurate_bot_presence())
-logger.info('BOT|Starting Discord bot.')
-bot.run(config.TOKEN)
+def main():
+    """ Start the bot and any additional tasks."""
+    # Remake the event loop and the bot.
+    loop = asyncio.get_event_loop()
+    bot = Bot(command_prefix=config.COMMAND_PREFIX, loop=loop)
+
+    # Disable all commands.
+    bot.remove_command('help')
+    bot.recursively_remove_all_commands()
+
+    # Setup the discord bot event handlers.
+    @bot.event
+    async def on_ready():
+        """ When bot is ready, update the bot presence."""
+        logger.info('BOT|Bot is now ready.')
+        async with aiohttp.ClientSession() as session:
+            await update_bot_presence(session, bot)
+
+    # Start the task and bot.
+    logger.info('BOT|Starting custom tasks.')
+    loop.create_task(windows_signal_handler())
+    loop.create_task(maintain_accurate_bot_presence(bot))
+    logger.info('BOT|Starting Discord bot.')
+    bot.run(config.TOKEN)
+
+
+while True:
+    try:
+        # Start the task and bot.
+        main()
+    except discord.DiscordException as e:
+        # Log stack trace.
+        logger.error('BOT|Caught unhandled Discord exception:', exc_info=True)
+        restart_delay = 10
+        logger.info('BOT|Waiting for {} seconds.'.format(restart_delay))
+        time.sleep(restart_delay)
+        logger.info('BOT|Attempting to restart bot.')
+        continue
+    except KeyboardInterrupt:
+        logger.info('BOT|Keyboard Interrupt: Closing the Discord bot.')
+        break
+    else:
+        logger.critical('BOT|Caught unhandled exception:', exc_info=True)
+        break
 logger.info('BOT|Discord bot closed.')
