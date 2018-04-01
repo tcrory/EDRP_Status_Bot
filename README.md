@@ -21,7 +21,7 @@ A Discord bot used for tracking CMDRs on the ED RP private group.
 ## EDRP API
 
 * Current API is an open JSON API which can be accessed at:<br>
-http://edrp-api.danowebstudios.com/
+https://edrp-api.danowebstudios.com/
 
 ## Information Gathering
 

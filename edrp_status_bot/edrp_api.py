@@ -10,7 +10,7 @@ import logging
 __version__ = '0.0.1'
 
 
-EDRP_API_URL = 'http://edrp-api.danowebstudios.com'
+EDRP_API_URL = 'https://edrp-api.danowebstudios.com'
 
 # Set up logging.
 logger = logging.getLogger('discord')
